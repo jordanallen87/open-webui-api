@@ -8,6 +8,8 @@ node_modules
 !.env.example
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+# Render deployment file
+render.yaml
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
@@ -307,3 +309,4 @@ dist
 cypress/videos
 cypress/screenshots
 .vscode/settings.json
+/env-temp
