@@ -91,11 +91,11 @@ RUN pip3 install --no-cache-dir uv && \
 import os
 from sentence_transformers import SentenceTransformer
 SentenceTransformer(os.environ['RAG_EMBEDDING_MODEL'], device='cpu')
-
 from faster_whisper import WhisperModel
 WhisperModel(os.environ['WHISPER_MODEL'], device='cpu',
              compute_type='int8', download_root=os.environ['WHISPER_MODEL_DIR'])
 PYCODE
+
 # Guard tiktoken lookup so empty encodings don’t break the build
 RUN python - <<'PYCODE' || (echo "⚠️ skipping tiktoken validation" && exit 0)
 import os, tiktoken
@@ -104,13 +104,16 @@ print("using tiktoken encoding:", name)
 tiktoken.get_encoding(name)
 PYCODE
 
+# Copy and install the local backend package (makes `open-webui` CLI available)
+COPY --chown=$UID:$GID ./backend .
+RUN pip3 install --no-cache-dir .
+
 RUN chown -R $UID:$GID /app/backend/data/
 
-# Copy built frontend & backend code
+# Copy built frontend assets
 COPY --chown=$UID:$GID --from=build /app/build /app/build
 COPY --chown=$UID:$GID --from=build /app/CHANGELOG.md /app/CHANGELOG.md
 COPY --chown=$UID:$GID --from=build /app/package.json /app/package.json
-COPY --chown=$UID:$GID ./backend .
 
 EXPOSE 8080
 HEALTHCHECK CMD curl --silent --fail http://localhost:${PORT:-8080}/health | jq -ne 'input.status == true' || exit 1
@@ -119,4 +122,5 @@ USER $UID:$GID
 ARG BUILD_HASH
 ENV WEBUI_BUILD_VERSION=${BUILD_HASH} DOCKER=true
 
+# Now that `open-webui` is installed, this will actually launch the server
 CMD ["bash","-lc","exec open-webui serve --host 0.0.0.0 --port ${PORT:-8080}"]
