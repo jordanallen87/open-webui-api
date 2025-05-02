@@ -4,13 +4,10 @@
 #  Build WebUI frontend     #
 #############################
 ARG BUILD_HASH=dev-build
-
 FROM --platform=$BUILDPLATFORM node:22-alpine3.20 AS build
 WORKDIR /app
-
 COPY package.json package-lock.json ./
 RUN npm ci
-
 COPY . .
 ENV APP_BUILD_HASH=${BUILD_HASH}
 RUN npm run build
@@ -30,7 +27,7 @@ ARG USE_TIKTOKEN_ENCODING_NAME="cl100k_base"
 ARG UID=0
 ARG GID=0
 
-# Runtime env
+# Runtime env defaults (overridden by Render at runtime)
 ENV ENV=prod \
     PORT=8080 \
     USE_OLLAMA_DOCKER=${USE_OLLAMA} \
@@ -57,9 +54,9 @@ ENV ENV=prod \
 WORKDIR /app/backend
 ENV HOME=/root
 
-# Create non-root user if needed
-RUN if [ "$UID" -ne 0 ]; then \
-      if [ "$GID" -ne 0 ]; then addgroup --gid $GID app; fi && \
+# Create non-root user if requested
+RUN if [ "$UID" != "0" ]; then \
+      addgroup --gid $GID app && \
       adduser --uid $UID --gid $GID --home $HOME --disabled-password --no-create-home app; \
     fi
 
@@ -68,7 +65,7 @@ RUN mkdir -p $HOME/.cache/chroma && \
     echo -n 00000000-0000-0000-0000-000000000000 > $HOME/.cache/chroma/telemetry_user_id && \
     chown -R $UID:$GID /app $HOME
 
-# Install system tools (with or without Ollama)
+# Install system dependencies (and Ollama if requested)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
       git build-essential pandoc netcat-openbsd curl jq gcc python3-dev ffmpeg libsm6 libxext6 && \
@@ -77,7 +74,7 @@ RUN apt-get update && \
     fi && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy & install Python deps + verify models
+# Copy requirements & install Python deps
 COPY --chown=$UID:$GID ./backend/requirements.txt ./requirements.txt
 
 RUN pip3 install --no-cache-dir uv && \
@@ -86,8 +83,10 @@ RUN pip3 install --no-cache-dir uv && \
     else \
       pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu --no-cache-dir; \
     fi && \
-    uv pip install --system -r requirements.txt --no-cache-dir && \
-    python - <<'PYCODE'
+    uv pip install --system -r requirements.txt --no-cache-dir
+
+# Validate sentence-transformers & whisper
+RUN python - <<'PYCODE'
 import os
 from sentence_transformers import SentenceTransformer
 SentenceTransformer(os.environ['RAG_EMBEDDING_MODEL'], device='cpu')
@@ -96,25 +95,24 @@ WhisperModel(os.environ['WHISPER_MODEL'], device='cpu',
              compute_type='int8', download_root=os.environ['WHISPER_MODEL_DIR'])
 PYCODE
 
-# Guard tiktoken lookup so empty encodings don’t break the build
+# Guarded tiktoken lookup
 RUN python - <<'PYCODE' || (echo "⚠️ skipping tiktoken validation" && exit 0)
 import os, tiktoken
-name = os.getenv('TIKTOKEN_ENCODING_NAME','cl100k_base')
-print("using tiktoken encoding:", name)
-tiktoken.get_encoding(name)
+enc = os.getenv('TIKTOKEN_ENCODING_NAME','cl100k_base')
+print("tiktoken encoding:", enc)
+tiktoken.get_encoding(enc)
 PYCODE
 
-# Copy and install the local backend package (makes `open-webui` CLI available)
+# Copy backend source
 COPY --chown=$UID:$GID ./backend .
-RUN pip3 install --no-cache-dir .
-
-RUN chown -R $UID:$GID /app/backend/data/
 
 # Copy built frontend assets
 COPY --chown=$UID:$GID --from=build /app/build /app/build
 COPY --chown=$UID:$GID --from=build /app/CHANGELOG.md /app/CHANGELOG.md
 COPY --chown=$UID:$GID --from=build /app/package.json /app/package.json
 
+# Final perms, expose & healthcheck
+RUN chown -R $UID:$GID /app/backend/data/
 EXPOSE 8080
 HEALTHCHECK CMD curl --silent --fail http://localhost:${PORT:-8080}/health | jq -ne 'input.status == true' || exit 1
 
@@ -122,5 +120,5 @@ USER $UID:$GID
 ARG BUILD_HASH
 ENV WEBUI_BUILD_VERSION=${BUILD_HASH} DOCKER=true
 
-# Now that `open-webui` is installed, this will actually launch the server
-CMD ["bash","-lc","exec open-webui serve --host 0.0.0.0 --port ${PORT:-8080}"]
+# Serve directly with Uvicorn so no missing CLI error
+CMD ["bash","-lc","exec uvicorn src.api.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
