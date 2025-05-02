@@ -111,7 +111,7 @@ COPY --chown=$UID:$GID --from=build /app/build /app/build
 COPY --chown=$UID:$GID --from=build /app/CHANGELOG.md /app/CHANGELOG.md
 COPY --chown=$UID:$GID --from=build /app/package.json /app/package.json
 
-# Final perms, expose & healthcheck
+# Final perms, expose & healthcheckGett
 RUN chown -R $UID:$GID /app/backend/data/
 EXPOSE 8080
 HEALTHCHECK CMD curl --silent --fail http://localhost:${PORT:-8080}/health | jq -ne 'input.status == true' || exit 1
@@ -121,4 +121,4 @@ ARG BUILD_HASH
 ENV WEBUI_BUILD_VERSION=${BUILD_HASH} DOCKER=true
 
 # Serve directly with Uvicorn so no missing CLI error
-CMD ["bash","-lc","exec uvicorn src.api.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
+CMD ["bash","-lc","exec uvicorn open_webui.api.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
