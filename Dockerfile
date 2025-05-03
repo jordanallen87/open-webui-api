@@ -75,7 +75,7 @@ RUN \
     done && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
-      apt-transport-https ca-certificates gnupg \
+      ca-certificates gnupg \
       git build-essential pandoc netcat-openbsd curl jq gcc python3-dev ffmpeg libsm6 libxext6 && \
     if [ "$USE_OLLAMA" = "true" ]; then \
       curl -fsSL https://ollama.com/install.sh | sh; \
