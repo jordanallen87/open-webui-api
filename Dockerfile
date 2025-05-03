@@ -6,8 +6,10 @@
 ARG BUILD_HASH=dev-build
 FROM --platform=$BUILDPLATFORM node:22-alpine3.20 AS build
 WORKDIR /app
+
 COPY package.json package-lock.json ./
 RUN npm ci
+
 COPY . .
 ENV APP_BUILD_HASH=${BUILD_HASH}
 RUN npm run build
@@ -60,23 +62,28 @@ RUN if [ "$UID" != "0" ]; then \
       adduser --uid $UID --gid $GID --home $HOME --disabled-password --no-create-home app; \
     fi
 
-# Prepare cache dirs & permissions
+# Prepare local cache & permissions
 RUN mkdir -p $HOME/.cache/chroma && \
     echo -n 00000000-0000-0000-0000-000000000000 > $HOME/.cache/chroma/telemetry_user_id && \
     chown -R $UID:$GID /app $HOME
 
-# Install system dependencies (and Ollama if requested)
-RUN apt-get update && \
+# Rewrite any APT sources to HTTPS, then install system deps + optional Ollama
+RUN \
+    for f in /etc/apt/sources.list /etc/apt/sources.list.d/*.list; do \
+      [ -f "$f" ] && \
+      sed -i 's|http://deb.debian.org/debian|https://deb.debian.org/debian|g; s|http://security.debian.org|https://security.debian.org|g' "$f"; \
+    done && \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
+      apt-transport-https ca-certificates gnupg \
       git build-essential pandoc netcat-openbsd curl jq gcc python3-dev ffmpeg libsm6 libxext6 && \
     if [ "$USE_OLLAMA" = "true" ]; then \
       curl -fsSL https://ollama.com/install.sh | sh; \
     fi && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy requirements & install Python deps
-COPY --chown=$UID:$GID ./backend/requirements.txt ./requirements.txt
-
+# Copy & install Python deps
+COPY --chown=$UID:$GID backend/requirements.txt .
 RUN pip3 install --no-cache-dir uv && \
     if [ "$USE_CUDA" = "true" ]; then \
       pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/$USE_CUDA_VER --no-cache-dir; \
@@ -85,7 +92,7 @@ RUN pip3 install --no-cache-dir uv && \
     fi && \
     uv pip install --system -r requirements.txt --no-cache-dir
 
-# Validate sentence-transformers & whisper
+# Validate sentence-transformers & faster-whisper
 RUN python - <<'PYCODE'
 import os
 from sentence_transformers import SentenceTransformer
@@ -104,14 +111,14 @@ tiktoken.get_encoding(enc)
 PYCODE
 
 # Copy backend source
-COPY --chown=$UID:$GID ./backend .
+COPY --chown=$UID:$GID backend .
 
 # Copy built frontend assets
 COPY --chown=$UID:$GID --from=build /app/build /app/build
 COPY --chown=$UID:$GID --from=build /app/CHANGELOG.md /app/CHANGELOG.md
 COPY --chown=$UID:$GID --from=build /app/package.json /app/package.json
 
-# Final perms, expose & healthcheckGett
+# Final permissions, expose port, healthcheck
 RUN chown -R $UID:$GID /app/backend/data/
 EXPOSE 8080
 HEALTHCHECK CMD curl --silent --fail http://localhost:${PORT:-8080}/health | jq -ne 'input.status == true' || exit 1
@@ -120,5 +127,5 @@ USER $UID:$GID
 ARG BUILD_HASH
 ENV WEBUI_BUILD_VERSION=${BUILD_HASH} DOCKER=true
 
-# Serve directly with Uvicorn so no missing CLI error
-CMD ["bash","-lc","exec uvicorn open_webui.api.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
+# Serve via Uvicorn
+CMD ["bash","-lc","exec uvicorn src.api.main:app --host 0.0.0.0 --port ${PORT:-8080}"]
