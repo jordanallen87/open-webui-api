@@ -10,6 +10,11 @@ services:
     buildCommand: |
       pip install --upgrade pip
       pip install -r backend/requirements.txt
-    startCommand: |
-      uvicorn backend.open_webui.main:app --port $PORT --host 0.0.0.0 --forwarded-allow-ips '*' --reload
 
+    startCommand: |
+      uvicorn open_webui.main:app \
+        --app-dir backend \
+        --host 0.0.0.0 \
+        --port ${PORT} \
+        --reload \
+        --forwarded-allow-ips='*'
