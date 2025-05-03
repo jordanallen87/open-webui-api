@@ -1,5 +1,6 @@
 [project]
 name = "open-webui"
+version = "0.1.0"
 description = "Open WebUI"
 authors = [
     { name = "Timothy Jaeryang Baek", email = "tim@openwebui.com" }
@@ -133,7 +134,7 @@ dependencies = [
 ]
 readme = "README.md"
 requires-python = ">= 3.11, < 3.13.0a1"
-dynamic = ["version"]
+# dynamic = ["version"]
 classifiers = [
     "Development Status :: 4 - Beta",
     "License :: OSI Approved :: MIT License",

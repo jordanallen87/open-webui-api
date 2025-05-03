@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: open-webui-api
+    env: docker
+    branch: main
+    dockerfilePath: Dockerfile
+    plan: starter      # or your preferred Render service plan
+    region: virginia     # or your nearest region
+
+    buildCommand: |
+      pip install --upgrade pip
+      pip install -r backend/requirements.txt
+    startCommand: |
+      uvicorn backend.open_webui.main:app --port $PORT --host 0.0.0.0 --forwarded-allow-ips '*' --reload
+
