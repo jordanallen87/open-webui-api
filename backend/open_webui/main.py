@@ -926,20 +926,8 @@ async def inspect_websocket(request: Request, call_next):
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:8081",  # Local development
-        "https://open-webui-api-uv.onrender.com",  # Your production API
-        "https://your-frontend-domain.com",  # Your production frontend (if different)
-        "http://192.168.1.24:8081",  # Expo development server
-        "https://192.168.1.24:8081",  # Expo development server (HTTPS)
-        "exp://192.168.1.24:8081",  # Expo client URL
-        "exp://192.168.1.24:19000",  # Expo client URL (default port)
-        "exp://192.168.1.24:19001",  # Expo client URL (alternative port)
-        "exp://192.168.1.24:19002",  # Expo client URL (alternative port)
-        "exp+open-webui-mobile://expo-development-client",  # Expo development client URL
-        "exp+open-webui-mobile://",  # Expo development client URL (base)
-        "*"  # Allow all origins as a fallback (will only work for requests without credentials)
-    ],
+    allow_origins=[],
+    allow_origin_regex=r".*",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
