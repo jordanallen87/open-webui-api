@@ -2,6 +2,9 @@ import socketio
 import redis
 from redis import asyncio as aioredis
 from urllib.parse import urlparse
+import logging
+
+log = logging.getLogger(__name__)
 
 
 def parse_redis_service_url(redis_url):
@@ -19,22 +22,40 @@ def parse_redis_service_url(redis_url):
 
 
 def get_redis_connection(redis_url, redis_sentinels, decode_responses=True):
-    if redis_sentinels:
-        redis_config = parse_redis_service_url(redis_url)
-        sentinel = redis.sentinel.Sentinel(
-            redis_sentinels,
-            port=redis_config["port"],
-            db=redis_config["db"],
-            username=redis_config["username"],
-            password=redis_config["password"],
-            decode_responses=decode_responses,
-        )
-
-        # Get a master connection from Sentinel
-        return sentinel.master_for(redis_config["service"])
-    else:
-        # Standard Redis connection
-        return redis.Redis.from_url(redis_url, decode_responses=decode_responses)
+    log.info(f"Attempting to connect to Redis. URL: '{redis_url}', Sentinels: {redis_sentinels}")
+    try:
+        if redis_sentinels:
+            redis_config = parse_redis_service_url(redis_url)
+            log.info(f"Connecting via Sentinel. Config: {redis_config}, Sentinel List: {redis_sentinels}")
+            sentinel = redis.sentinel.Sentinel(
+                redis_sentinels,
+                # socket_timeout=0.1, # Optional: for quicker connection timeout testing
+                db=redis_config["db"],
+                username=redis_config["username"],
+                password=redis_config["password"],
+                decode_responses=decode_responses,
+            )
+            # Get a master connection from Sentinel
+            r = sentinel.master_for(redis_config["service"])
+            r.ping() # Verify connection
+            log.info(f"Successfully connected to Redis master via Sentinel: {redis_config['service']}")
+            return r
+        else:
+            # Standard Redis connection
+            log.info(f"Connecting via standard Redis URL: {redis_url}")
+            r = redis.Redis.from_url(redis_url, decode_responses=decode_responses)
+            r.ping() # Verify connection
+            log.info("Successfully connected to standard Redis.")
+            return r
+    except redis.exceptions.ConnectionError as e:
+        log.error(f"Redis ConnectionError: {e}")
+        raise
+    except redis.exceptions.AuthenticationError as e:
+        log.error(f"Redis AuthenticationError: {e}")
+        raise
+    except Exception as e:
+        log.error(f"Failed to connect to Redis. URL: '{redis_url}', Sentinels: {redis_sentinels}. Error: {e}", exc_info=True)
+        raise
 
 
 def get_sentinels_from_env(sentinel_hosts_env, sentinel_port_env):

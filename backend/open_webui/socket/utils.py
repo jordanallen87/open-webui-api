@@ -1,6 +1,9 @@
 import json
 import uuid
 from open_webui.utils.redis import get_redis_connection
+import logging
+
+log = logging.getLogger(__name__)
 
 
 class RedisLock:
@@ -14,17 +17,31 @@ class RedisLock:
         )
 
     def aquire_lock(self):
-        # nx=True will only set this key if it _hasn't_ already been set
-        self.lock_obtained = self.redis.set(
-            self.lock_name, self.lock_id, nx=True, ex=self.timeout_secs
-        )
-        return self.lock_obtained
+        log.debug(f"RedisLock: Attempting to acquire lock '{self.lock_name}'. Redis client: {self.redis}")
+        try:
+            # nx=True will only set this key if it _hasn't_ already been set
+            self.lock_obtained = self.redis.set(
+                self.lock_name, self.lock_id, nx=True, ex=self.timeout_secs
+            )
+            log.debug(f"RedisLock: Lock '{self.lock_name}' acquisition attempt result: {self.lock_obtained}")
+            return self.lock_obtained
+        except Exception as e:
+            log.error(f"RedisLock: Exception during acquire_lock for '{self.lock_name}': {e}", exc_info=True)
+            self.lock_obtained = False # Ensure it's false on error
+            return False
 
     def renew_lock(self):
-        # xx=True will only set this key if it _has_ already been set
-        return self.redis.set(
-            self.lock_name, self.lock_id, xx=True, ex=self.timeout_secs
-        )
+        log.debug(f"RedisLock: Attempting to renew lock '{self.lock_name}'. Redis client: {self.redis}")
+        try:
+            # xx=True will only set this key if it _has_ already been set
+            result = self.redis.set(
+                self.lock_name, self.lock_id, xx=True, ex=self.timeout_secs
+            )
+            log.debug(f"RedisLock: Lock '{self.lock_name}' renewal attempt result: {result}")
+            return result
+        except Exception as e:
+            log.error(f"RedisLock: Exception during renew_lock for '{self.lock_name}': {e}", exc_info=True)
+            return False
 
     def release_lock(self):
         lock_value = self.redis.get(self.lock_name)
